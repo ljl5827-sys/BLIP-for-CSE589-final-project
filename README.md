@@ -1,6 +1,110 @@
-## BLIP: Bootstrapping Language-Image Pre-training for Unified Vision-Language Understanding and Generation
+# BLIP: Bootstrapping Language-Image Pre-training for Unified Vision-Language Understanding and Generation  
+### (Modified Version for CSE589 Final Project — Linlin Li, Penn State University)
 
-## Announcement: BLIP is now officially integrated into [LAVIS](https://github.com/salesforce/LAVIS) - a one-stop library for language-and-vision research and applications!
+This repository contains my CSE589 final project, where I reproduce BLIP’s COCO 2014 image–text retrieval task under limited single-GPU computation.  
+The project is based on the official BLIP implementation from Salesforce Research, with several required modifications to enable single-GPU execution, small-scale dataset debugging, and custom hyperparameter experiments.
+
+Below is a list of all modifications made for this project:
+
+---
+
+## 🔧 Modifications Made for This Project
+
+### 1. Dataset Reduction (`import_json.py`)
+To speed up debugging, I created a script that extracts 100 caption entries from the COCO Karpathy test set:
+
+```python
+import json
+src = r".../coco_karpathy_test.json"
+dst = r".../coco_karpathy_test_small.json"
+
+with open(src, "r") as f:
+    data = json.load(f)
+
+small_data = data[:100]
+with open(dst, "w") as f:
+    json.dump(small_data, f)
+```
+
+This was used only for debugging.  
+The final results in the report use the full 500-image test set.
+
+---
+
+### 2. Modified `configs/retrieval_coco.yaml`
+
+**Updated dataset paths:**
+```yaml
+image_root: "D:\\CSE589\\Linlin_final\\dataset\\images"
+ann_root:   "D:\\CSE589\\Linlin_final\\dataset\\annotation"
+pretrained: "D:\\CSE589\\Linlin_final\\BLIP-main\\checkpoints\\model_base_retrieval_coco.pth"
+```
+
+**Reduced training batch size** for single GPU:
+```yaml
+batch_size_train: 4
+batch_size_test: 8
+```
+
+These results are analyzed in the project report.
+
+---
+
+### 3. Modified `train_retrieval.py`
+
+**(A) Disabled multi-GPU barriers to avoid single-GPU hanging:**
+
+Original:
+```python
+if args.distributed and dist.is_initialized():
+    dist.barrier()
+```
+
+Modified:
+```python
+if args.distributed and dist.is_initialized():
+    dist.barrier()
+# torch.cuda.empty_cache()
+```
+
+**(B) Changed defaults to use COCO:**
+```python
+parser.add_argument('--config', default='./configs/retrieval_coco.yaml')
+parser.add_argument('--output_dir', default='output/Retrieval_coco')
+```
+
+**(C) Fixed YAML saving for Windows:**
+```python
+with open(os.path.join(args.output_dir, 'config.yaml'), 'w') as f:
+    yaml.dump(config, f)
+```
+
+---
+
+### 4. Modified `blip_retrieval.py`
+
+The original implementation uses `torch.distributed.all_gather`, which breaks when only one GPU is available.
+
+Original:
+```python
+tensors_gather = [...]
+torch.distributed.all_gather(...)
+output = torch.cat(..., dim=0)
+return output
+```
+
+Modified to:
+```python
+@torch.no_grad()
+def concat_all_gather(tensor):
+    return tensor
+```
+
+Reason:  
+On a single GPU, world size = 1, so concatenation and all_gather are unnecessary and cause size mismatches or runtime errors. Returning the tensor directly restores correct evaluation behavior.
+
+---
+
 
 <img src="BLIP.gif" width="700">
 
