@@ -7,7 +7,7 @@
 '''
 import argparse
 import os
-import ruamel_yaml as yaml
+import ruamel.yaml as yaml
 import numpy as np
 import random
 import time
@@ -315,8 +315,9 @@ def main(args, config):
                     
         if args.evaluate: 
             break
-
-        dist.barrier()     
+        if args.distributed and dist.is_initialized():
+            dist.barrier()
+        #dist.barrier()     
         torch.cuda.empty_cache()
 
     total_time = time.time() - start_time
@@ -326,8 +327,8 @@ def main(args, config):
     
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()     
-    parser.add_argument('--config', default='./configs/retrieval_flickr.yaml')
-    parser.add_argument('--output_dir', default='output/Retrieval_flickr')        
+    parser.add_argument('--config', default='./configs/retrieval_coco.yaml')
+    parser.add_argument('--output_dir', default='output/Retrieval_coco')        
     parser.add_argument('--evaluate', action='store_true')
     parser.add_argument('--device', default='cuda')
     parser.add_argument('--seed', default=42, type=int)
@@ -335,11 +336,18 @@ if __name__ == '__main__':
     parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
     parser.add_argument('--distributed', default=True, type=bool)
     args = parser.parse_args()
+    from ruamel.yaml import YAML
+    yaml = YAML(typ='safe')
+    with open(args.config, 'r') as f:
+        config = yaml.load(f)
 
-    config = yaml.load(open(args.config, 'r'), Loader=yaml.Loader)
 
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
-        
-    yaml.dump(config, open(os.path.join(args.output_dir, 'config.yaml'), 'w'))    
+
+    yaml = YAML(typ='unsafe')
+    with open(os.path.join(args.output_dir, 'config.yaml'), 'w') as f:
+        yaml.dump(config, f)
+    
+    #yaml.dump(config, open(os.path.join(args.output_dir, 'config.yaml'), 'w'))    
     
     main(args, config)
